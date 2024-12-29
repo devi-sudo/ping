@@ -1,3 +1,3 @@
 #!/bin/bash
 pip install requests
-python ping_website.py
+python index.py
