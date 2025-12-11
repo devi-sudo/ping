@@ -1,6 +1,15 @@
 services:
-  - type: worker
-    name: PingWebsiteWorker
-    env: python
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "./start.sh"
+  - type: web
+    name: rfid-backend
+    env: node
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: FIREBASE_DATABASE_URL
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
