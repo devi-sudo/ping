@@ -865,7 +865,89 @@ app.get('/api/realtime/scans', authenticateToken, requireAdmin, async (req, res)
     res.status(500).json({ error: error.message });
   }
 });
+// Add this to your index.js file in the ==================== DEVICE MANAGEMENT ==================== section
+// 14. Get Device Status (Fixed Version)
+app.get('/api/devices/status', authenticateToken, async (req, res) => {
+  try {
+    const devicesRef = db.collection('devices');
+    const snapshot = await devicesRef.get();
+    
+    const devices = [];
+    
+    if (snapshot.empty) {
+      return res.json(devices); // Return empty array if no devices
+    }
+    
+    snapshot.forEach(doc => {
+      const device = doc.data();
+      const lastSeen = device.lastSeen ? device.lastSeen.toDate() : null;
+      
+      // Check if device is online (last seen within 5 minutes)
+      let status = 'offline';
+      if (lastSeen) {
+        const timeDiff = new Date() - lastSeen;
+        status = timeDiff < 5 * 60 * 1000 ? 'online' : 'offline';
+      }
+      
+      devices.push({
+        id: doc.id,
+        name: device.name || doc.id,
+        lastSeen: lastSeen,
+        lastCard: device.lastCard || null,
+        status: status
+      });
+    });
 
+    res.json(devices);
+  } catch (error) {
+    console.error('Device status error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 17. Add device registration endpoint (when ESP8266 first connects)
+app.post('/api/devices/register', async (req, res) => {
+  try {
+    const { deviceId, deviceName } = req.body;
+    
+    if (!deviceId) {
+      return res.status(400).json({ error: 'Device ID required' });
+    }
+    
+    const deviceRef = db.collection('devices').doc(deviceId);
+    const deviceDoc = await deviceRef.get();
+    
+    const deviceData = {
+      id: deviceId,
+      name: deviceName || `RFID Scanner ${deviceId}`,
+      lastSeen: new Date(),
+      status: 'online',
+      registeredAt: new Date(),
+      type: 'rfid_scanner'
+    };
+    
+    if (deviceDoc.exists) {
+      // Update existing device
+      await deviceRef.update({
+        lastSeen: new Date(),
+        status: 'online',
+        name: deviceName || deviceDoc.data().name
+      });
+    } else {
+      // Create new device
+      await deviceRef.set(deviceData);
+    }
+    
+    res.json({ 
+      status: 'success',
+      message: 'Device registered/updated',
+      deviceId: deviceId
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 // ==================== HEALTH CHECK ====================
 
 app.get('/health', (req, res) => {
