@@ -948,6 +948,397 @@ app.post('/api/devices/register', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+//////////////---EXTRA WE CAN REMOVE
+// ==================== DEVICE MODE MANAGEMENT ====================
+
+// 21. Set device mode
+app.post('/api/devices/:deviceId/mode', authenticateToken, async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    const { mode } = req.body;
+    
+    if (!['attendance', 'enrollment'].includes(mode)) {
+      return res.status(400).json({ error: 'Invalid mode' });
+    }
+    
+    const deviceRef = db.collection('devices').doc(deviceId);
+    const deviceDoc = await deviceRef.get();
+    
+    if (!deviceDoc.exists) {
+      // Create device if doesn't exist
+      await deviceRef.set({
+        id: deviceId,
+        name: `Device ${deviceId}`,
+        mode: mode,
+        lastSeen: new Date(),
+        status: 'online',
+        registeredAt: new Date()
+      });
+    } else {
+      await deviceRef.update({
+        mode: mode,
+        lastSeen: new Date(),
+        status: 'online'
+      });
+    }
+    
+    res.json({ 
+      status: 'success',
+      message: `Device switched to ${mode} mode`,
+      deviceId: deviceId,
+      mode: mode
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 22. Get device mode
+app.get('/api/devices/:deviceId/mode', async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    
+    const deviceRef = db.collection('devices').doc(deviceId);
+    const deviceDoc = await deviceRef.get();
+    
+    if (!deviceDoc.exists) {
+      return res.json({ 
+        mode: 'attendance',
+        exists: false 
+      });
+    }
+    
+    const deviceData = deviceDoc.data();
+    
+    res.json({ 
+      mode: deviceData.mode || 'attendance',
+      exists: true,
+      lastSeen: deviceData.lastSeen
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 23. Check for enrollment cards
+app.get('/api/enrollment/check', authenticateToken, async (req, res) => {
+  try {
+    // Get all devices in enrollment mode
+    const devicesRef = db.collection('devices');
+    const snapshot = await devicesRef
+      .where('mode', '==', 'enrollment')
+      .where('lastSeen', '>', new Date(Date.now() - 15000)) // Last 15 seconds
+      .get();
+    
+    if (snapshot.empty) {
+      return res.json({ 
+        status: 'waiting',
+        message: 'No active devices in enrollment mode'
+      });
+    }
+    
+    // Find the most recent scan
+    let latestCard = null;
+    snapshot.forEach(doc => {
+      const device = doc.data();
+      if (device.lastCard && device.lastSeen) {
+        const lastSeen = device.lastSeen.toDate ? device.lastSeen.toDate() : new Date(device.lastSeen);
+        if (!latestCard || lastSeen > latestCard.timestamp) {
+          latestCard = {
+            cardId: device.lastCard,
+            deviceId: doc.id,
+            deviceName: device.name,
+            timestamp: lastSeen
+          };
+        }
+      }
+    });
+    
+    if (!latestCard) {
+      return res.json({ 
+        status: 'waiting',
+        message: 'Waiting for card scan...'
+      });
+    }
+    
+    // Check if card is already enrolled
+    const studentsRef = db.collection('students');
+    const studentSnap = await studentsRef.where('cardId', '==', latestCard.cardId).get();
+    
+    if (!studentSnap.empty) {
+      return res.json({
+        status: 'already_enrolled',
+        cardId: latestCard.cardId,
+        message: 'This card is already assigned to a student'
+      });
+    }
+    
+    res.json({
+      status: 'pending',
+      cardId: latestCard.cardId,
+      deviceId: latestCard.deviceId,
+      deviceName: latestCard.deviceName,
+      timestamp: latestCard.timestamp,
+      message: 'Card ready for enrollment'
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 24. Update device status
+app.post('/api/devices/status/update', async (req, res) => {
+  try {
+    const { deviceId, status, mode } = req.body;
+    
+    if (!deviceId) {
+      return res.status(400).json({ error: 'Device ID required' });
+    }
+    
+    const deviceRef = db.collection('devices').doc(deviceId);
+    
+    await deviceRef.set({
+      lastSeen: new Date(),
+      status: status || 'online',
+      mode: mode || 'attendance'
+    }, { merge: true });
+    
+    res.json({ 
+      status: 'success',
+      message: 'Device status updated'
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 25. Quick enrollment endpoint
+app.post('/api/enrollment/quick', authenticateToken, async (req, res) => {
+  try {
+    const { cardId, name, age, className, rollNumber } = req.body;
+    
+    if (!cardId || !name || !className) {
+      return res.status(400).json({ error: 'Card ID, Name, and Class are required' });
+    }
+    
+    // Check if card already exists
+    const existing = await db.collection('students')
+      .where('cardId', '==', cardId)
+      .get();
+    
+    if (!existing.empty) {
+      return res.status(400).json({ error: 'Card ID already enrolled' });
+    }
+    
+    const studentData = {
+      name,
+      age: parseInt(age) || 0,
+      className,
+      rollNumber: rollNumber || '',
+      cardId,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    const docRef = await db.collection('students').add(studentData);
+    
+    // Clear the card from device (optional)
+    const devicesRef = db.collection('devices');
+    const deviceSnap = await devicesRef.where('lastCard', '==', cardId).get();
+    
+    if (!deviceSnap.empty) {
+      const deviceDoc = deviceSnap.docs[0];
+      await deviceDoc.ref.update({
+        lastCard: null
+      });
+    }
+    
+    res.json({
+      status: 'success',
+      message: 'Student enrolled successfully',
+      studentId: docRef.id,
+      cardId: cardId,
+      student: studentData
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 26. Update RFID scan endpoint to handle mode properly
+app.post('/api/rfid/scan', async (req, res) => {
+  try {
+    const { cardId, deviceId, mode = 'attendance' } = req.body;
+
+    console.log('📱 RFID Scan received:', { cardId, deviceId, mode });
+
+    if (!cardId) {
+      return res.status(400).json({ error: 'Card ID required' });
+    }
+
+    // ============ UPDATE DEVICE STATUS ============
+    if (deviceId) {
+      const deviceRef = db.collection('devices').doc(deviceId);
+      const deviceData = {
+        lastSeen: new Date(),
+        status: 'online',
+        lastCard: cardId,
+        mode: mode
+      };
+      
+      const deviceDoc = await deviceRef.get();
+      if (!deviceDoc.exists) {
+        // Auto-register device if not exists
+        deviceData.id = deviceId;
+        deviceData.name = `Device ${deviceId}`;
+        deviceData.registeredAt = new Date();
+        await deviceRef.set(deviceData);
+      } else {
+        await deviceRef.set(deviceData, { merge: true });
+      }
+    }
+
+    // ============ ENROLLMENT MODE ============
+    if (mode === 'enrollment') {
+      console.log('🎯 Enrollment mode - Card detected:', cardId);
+      
+      // Check if card already enrolled
+      const studentsRef = db.collection('students');
+      const studentSnap = await studentsRef.where('cardId', '==', cardId).get();
+      
+      if (!studentSnap.empty) {
+        return res.json({
+          status: 'already_enrolled',
+          cardId: cardId,
+          message: 'This card is already assigned to a student'
+        });
+      }
+      
+      return res.json({
+        status: 'enrollment',
+        cardId: cardId,
+        message: 'Card ready for enrollment',
+        time: new Date().toLocaleTimeString()
+      });
+    }
+
+    // ============ ATTENDANCE MODE ============
+    // Rest of your existing attendance logic...
+    const studentsRef = db.collection('students');
+    const snapshot = await studentsRef.where('cardId', '==', cardId).where('isActive', '==', true).get();
+
+    if (snapshot.empty) {
+      return res.json({ 
+        status: 'not_found',
+        cardId: cardId,
+        message: 'Card not registered or student inactive' 
+      });
+    }
+
+    const studentDoc = snapshot.docs[0];
+    const student = { id: studentDoc.id, ...studentDoc.data() };
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const attendanceRef = db.collection('attendance');
+    const todayQuery = await attendanceRef
+      .where('studentId', '==', student.id)
+      .where('date', '>=', today)
+      .limit(1)
+      .get();
+
+    let attendanceData;
+    let isCheckIn = false;
+
+    if (todayQuery.empty) {
+      // CHECK-IN
+      isCheckIn = true;
+      const now = new Date();
+      const isLate = now.getHours() > 8 || (now.getHours() === 8 && now.getMinutes() > 30);
+      
+      attendanceData = {
+        studentId: student.id,
+        cardId: student.cardId,
+        name: student.name,
+        className: student.className,
+        rollNumber: student.rollNumber,
+        checkIn: now,
+        date: now,
+        status: isLate ? 'Late' : 'Present',
+        type: 'checkin',
+        deviceId: deviceId || 'unknown',
+        mode: mode
+      };
+
+      await attendanceRef.add(attendanceData);
+
+      // Update real-time
+      const realtimeRef = admin.database().ref('scans');
+      await realtimeRef.push({
+        cardId,
+        name: student.name,
+        className: student.className,
+        type: 'checkin',
+        timestamp: Date.now(),
+        status: isLate ? 'Late' : 'Present',
+        deviceId: deviceId
+      });
+
+    } else {
+      // CHECK-OUT
+      const attendanceDoc = todayQuery.docs[0];
+      const existingRecord = attendanceDoc.data();
+
+      if (!existingRecord.checkOut) {
+        await attendanceDoc.ref.update({
+          checkOut: new Date(),
+          type: 'checkout'
+        });
+
+        // Update real-time
+        const realtimeRef = admin.database().ref('scans');
+        await realtimeRef.push({
+          cardId,
+          name: student.name,
+          className: student.className,
+          type: 'checkout',
+          timestamp: Date.now(),
+          status: 'Checked Out',
+          deviceId: deviceId
+        });
+      } else {
+        return res.json({ 
+          status: 'already_checked_out',
+          name: student.name,
+          message: 'Already checked out today'
+        });
+      }
+    }
+
+    return res.json({ 
+      status: isCheckIn ? 'login' : 'logout',
+      name: student.name,
+      className: student.className,
+      message: isCheckIn ? 
+        `Welcome ${student.name} (${student.className})` : 
+        `Goodbye ${student.name} (${student.className})`,
+      time: new Date().toLocaleTimeString(),
+      isLate: attendanceData && attendanceData.status === 'Late'
+    });
+
+  } catch (error) {
+    console.error('❌ RFID Scan error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ==================== HEALTH CHECK ====================
 
 app.get('/health', (req, res) => {
