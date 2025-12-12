@@ -1,3 +1,4 @@
+// ==================== SIMPLE CARD ENROLLMENT SYSTEM ====================
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -187,129 +188,129 @@ app.get('/api/auth/verify', authenticateToken, (req, res) => {
 // ==================== RFID ENDPOINTS ====================
 
 // 4. Receive RFID Scan from ESP8266
-app.post('/api/rfid/scan', async (req, res) => {
-  try {
-    const { cardId, deviceId } = req.body;
+// app.post('/api/rfid/scan', async (req, res) => {
+//   try {
+//     const { cardId, deviceId } = req.body;
 
-    console.log('📱 RFID Scan received:', { cardId, deviceId });
+//     console.log('📱 RFID Scan received:', { cardId, deviceId });
 
-    if (!cardId) {
-      return res.status(400).json({ error: 'Card ID required' });
-    }
+//     if (!cardId) {
+//       return res.status(400).json({ error: 'Card ID required' });
+//     }
 
-    // Find student by card ID
-    const studentsRef = db.collection('students');
-    const snapshot = await studentsRef.where('cardId', '==', cardId).where('isActive', '==', true).get();
+//     // Find student by card ID
+//     const studentsRef = db.collection('students');
+//     const snapshot = await studentsRef.where('cardId', '==', cardId).where('isActive', '==', true).get();
 
-    if (snapshot.empty) {
-      return res.json({ 
-        status: 'not_found',
-        message: 'Card not registered or student inactive' 
-      });
-    }
+//     if (snapshot.empty) {
+//       return res.json({ 
+//         status: 'not_found',
+//         message: 'Card not registered or student inactive' 
+//       });
+//     }
 
-    const studentDoc = snapshot.docs[0];
-    const student = { id: studentDoc.id, ...studentDoc.data() };
+//     const studentDoc = snapshot.docs[0];
+//     const student = { id: studentDoc.id, ...studentDoc.data() };
 
-    // Check today's attendance
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+//     // Check today's attendance
+//     const today = new Date();
+//     today.setHours(0, 0, 0, 0);
 
-    const attendanceRef = db.collection('attendance');
-    const todayQuery = await attendanceRef
-      .where('studentId', '==', student.id)
-      .where('date', '>=', today)
-      .limit(1)
-      .get();
+//     const attendanceRef = db.collection('attendance');
+//     const todayQuery = await attendanceRef
+//       .where('studentId', '==', student.id)
+//       .where('date', '>=', today)
+//       .limit(1)
+//       .get();
 
-    let attendanceData;
-    let isCheckIn = false;
+//     let attendanceData;
+//     let isCheckIn = false;
 
-    if (todayQuery.empty) {
-      // CHECK-IN
-      isCheckIn = true;
-      const now = new Date();
+//     if (todayQuery.empty) {
+//       // CHECK-IN
+//       isCheckIn = true;
+//       const now = new Date();
       
-      // Check if late (after 8:30 AM)
-      const isLate = now.getHours() > 8 || (now.getHours() === 8 && now.getMinutes() > 30);
+//       // Check if late (after 8:30 AM)
+//       const isLate = now.getHours() > 8 || (now.getHours() === 8 && now.getMinutes() > 30);
       
-      attendanceData = {
-        studentId: student.id,
-        cardId: student.cardId,
-        name: student.name,
-        className: student.className,
-        rollNumber: student.rollNumber,
-        checkIn: now,
-        date: now,
-        status: isLate ? 'Late' : 'Present',
-        type: 'checkin',
-        deviceId: deviceId || 'unknown'
-      };
+//       attendanceData = {
+//         studentId: student.id,
+//         cardId: student.cardId,
+//         name: student.name,
+//         className: student.className,
+//         rollNumber: student.rollNumber,
+//         checkIn: now,
+//         date: now,
+//         status: isLate ? 'Late' : 'Present',
+//         type: 'checkin',
+//         deviceId: deviceId || 'unknown'
+//       };
 
-      await attendanceRef.add(attendanceData);
-      console.log('✅ Check-in:', student.name, isLate ? '(Late)' : '');
+//       await attendanceRef.add(attendanceData);
+//       console.log('✅ Check-in:', student.name, isLate ? '(Late)' : '');
 
-    } else {
-      // CHECK-OUT
-      const attendanceDoc = todayQuery.docs[0];
-      const existingRecord = attendanceDoc.data();
+//     } else {
+//       // CHECK-OUT
+//       const attendanceDoc = todayQuery.docs[0];
+//       const existingRecord = attendanceDoc.data();
 
-      if (!existingRecord.checkOut) {
-        await attendanceDoc.ref.update({
-          checkOut: new Date(),
-          type: 'checkout'
-        });
+//       if (!existingRecord.checkOut) {
+//         await attendanceDoc.ref.update({
+//           checkOut: new Date(),
+//           type: 'checkout'
+//         });
 
-        attendanceData = { ...existingRecord, checkOut: new Date() };
-        console.log('👋 Check-out:', student.name);
-      } else {
-        return res.json({ 
-          status: 'already_checked_out',
-          name: student.name,
-          message: 'Already checked out today'
-        });
-      }
-    }
+//         attendanceData = { ...existingRecord, checkOut: new Date() };
+//         console.log('👋 Check-out:', student.name);
+//       } else {
+//         return res.json({ 
+//           status: 'already_checked_out',
+//           name: student.name,
+//           message: 'Already checked out today'
+//         });
+//       }
+//     }
 
-    // Update real-time status in Firebase Database (for real-time monitoring)
-    const realtimeRef = admin.database().ref('scans');
-    const scanData = {
-      cardId,
-      name: student.name,
-      className: student.className,
-      type: isCheckIn ? 'checkin' : 'checkout',
-      timestamp: Date.now(),
-      status: isCheckIn ? (attendanceData.status === 'Late' ? 'Late' : 'Present') : 'Checked Out'
-    };
+//     // Update real-time status in Firebase Database (for real-time monitoring)
+//     const realtimeRef = admin.database().ref('scans');
+//     const scanData = {
+//       cardId,
+//       name: student.name,
+//       className: student.className,
+//       type: isCheckIn ? 'checkin' : 'checkout',
+//       timestamp: Date.now(),
+//       status: isCheckIn ? (attendanceData.status === 'Late' ? 'Late' : 'Present') : 'Checked Out'
+//     };
     
-    await realtimeRef.push(scanData);
+//     await realtimeRef.push(scanData);
 
-    // Update device last seen
-    if (deviceId) {
-      const deviceRef = db.collection('devices').doc(deviceId);
-      await deviceRef.set({
-        lastSeen: new Date(),
-        status: 'online',
-        lastCard: cardId
-      }, { merge: true });
-    }
+//     // Update device last seen
+//     if (deviceId) {
+//       const deviceRef = db.collection('devices').doc(deviceId);
+//       await deviceRef.set({
+//         lastSeen: new Date(),
+//         status: 'online',
+//         lastCard: cardId
+//       }, { merge: true });
+//     }
 
-    return res.json({ 
-      status: isCheckIn ? 'login' : 'logout',
-      name: student.name,
-      className: student.className,
-      message: isCheckIn ? 
-        `Welcome ${student.name} (${student.className})` : 
-        `Goodbye ${student.name} (${student.className})`,
-      time: new Date().toLocaleTimeString(),
-      isLate: attendanceData.status === 'Late'
-    });
+//     return res.json({ 
+//       status: isCheckIn ? 'login' : 'logout',
+//       name: student.name,
+//       className: student.className,
+//       message: isCheckIn ? 
+//         `Welcome ${student.name} (${student.className})` : 
+//         `Goodbye ${student.name} (${student.className})`,
+//       time: new Date().toLocaleTimeString(),
+//       isLate: attendanceData.status === 'Late'
+//     });
 
-  } catch (error) {
-    console.error('❌ RFID Scan error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
+//   } catch (error) {
+//     console.error('❌ RFID Scan error:', error);
+//     res.status(500).json({ error: error.message });
+//   }
+// });
 
 // ==================== STUDENT MANAGEMENT ====================
 
@@ -1172,75 +1173,385 @@ app.post('/api/enrollment/quick', authenticateToken, async (req, res) => {
 });
 
 // 26. Update RFID scan endpoint to handle mode properly
+// app.post('/api/rfid/scan', async (req, res) => {
+//   try {
+//     const { cardId, deviceId, mode = 'attendance' } = req.body;
+
+//     console.log('📱 RFID Scan received:', { cardId, deviceId, mode });
+
+//     if (!cardId) {
+//       return res.status(400).json({ error: 'Card ID required' });
+//     }
+
+//     // ============ UPDATE DEVICE STATUS ============
+//     if (deviceId) {
+//       const deviceRef = db.collection('devices').doc(deviceId);
+//       const deviceData = {
+//         lastSeen: new Date(),
+//         status: 'online',
+//         lastCard: cardId,
+//         mode: mode
+//       };
+      
+//       const deviceDoc = await deviceRef.get();
+//       if (!deviceDoc.exists) {
+//         // Auto-register device if not exists
+//         deviceData.id = deviceId;
+//         deviceData.name = `Device ${deviceId}`;
+//         deviceData.registeredAt = new Date();
+//         await deviceRef.set(deviceData);
+//       } else {
+//         await deviceRef.set(deviceData, { merge: true });
+//       }
+//     }
+
+//     // ============ ENROLLMENT MODE ============
+//     if (mode === 'enrollment') {
+//       console.log('🎯 Enrollment mode - Card detected:', cardId);
+      
+//       // Check if card already enrolled
+//       const studentsRef = db.collection('students');
+//       const studentSnap = await studentsRef.where('cardId', '==', cardId).get();
+      
+//       if (!studentSnap.empty) {
+//         return res.json({
+//           status: 'already_enrolled',
+//           cardId: cardId,
+//           message: 'This card is already assigned to a student'
+//         });
+//       }
+      
+//       return res.json({
+//         status: 'enrollment',
+//         cardId: cardId,
+//         message: 'Card ready for enrollment',
+//         time: new Date().toLocaleTimeString()
+//       });
+//     }
+
+//     // ============ ATTENDANCE MODE ============
+//     // Rest of your existing attendance logic...
+//     const studentsRef = db.collection('students');
+//     const snapshot = await studentsRef.where('cardId', '==', cardId).where('isActive', '==', true).get();
+
+//     if (snapshot.empty) {
+//       return res.json({ 
+//         status: 'not_found',
+//         cardId: cardId,
+//         message: 'Card not registered or student inactive' 
+//       });
+//     }
+
+//     const studentDoc = snapshot.docs[0];
+//     const student = { id: studentDoc.id, ...studentDoc.data() };
+
+//     const today = new Date();
+//     today.setHours(0, 0, 0, 0);
+
+//     const attendanceRef = db.collection('attendance');
+//     const todayQuery = await attendanceRef
+//       .where('studentId', '==', student.id)
+//       .where('date', '>=', today)
+//       .limit(1)
+//       .get();
+
+//     let attendanceData;
+//     let isCheckIn = false;
+
+//     if (todayQuery.empty) {
+//       // CHECK-IN
+//       isCheckIn = true;
+//       const now = new Date();
+//       const isLate = now.getHours() > 8 || (now.getHours() === 8 && now.getMinutes() > 30);
+      
+//       attendanceData = {
+//         studentId: student.id,
+//         cardId: student.cardId,
+//         name: student.name,
+//         className: student.className,
+//         rollNumber: student.rollNumber,
+//         checkIn: now,
+//         date: now,
+//         status: isLate ? 'Late' : 'Present',
+//         type: 'checkin',
+//         deviceId: deviceId || 'unknown',
+//         mode: mode
+//       };
+
+//       await attendanceRef.add(attendanceData);
+
+//       // Update real-time
+//       const realtimeRef = admin.database().ref('scans');
+//       await realtimeRef.push({
+//         cardId,
+//         name: student.name,
+//         className: student.className,
+//         type: 'checkin',
+//         timestamp: Date.now(),
+//         status: isLate ? 'Late' : 'Present',
+//         deviceId: deviceId
+//       });
+
+//     } else {
+//       // CHECK-OUT
+//       const attendanceDoc = todayQuery.docs[0];
+//       const existingRecord = attendanceDoc.data();
+
+//       if (!existingRecord.checkOut) {
+//         await attendanceDoc.ref.update({
+//           checkOut: new Date(),
+//           type: 'checkout'
+//         });
+
+//         // Update real-time
+//         const realtimeRef = admin.database().ref('scans');
+//         await realtimeRef.push({
+//           cardId,
+//           name: student.name,
+//           className: student.className,
+//           type: 'checkout',
+//           timestamp: Date.now(),
+//           status: 'Checked Out',
+//           deviceId: deviceId
+//         });
+//       } else {
+//         return res.json({ 
+//           status: 'already_checked_out',
+//           name: student.name,
+//           message: 'Already checked out today'
+//         });
+//       }
+//     }
+
+//     return res.json({ 
+//       status: isCheckIn ? 'login' : 'logout',
+//       name: student.name,
+//       className: student.className,
+//       message: isCheckIn ? 
+//         `Welcome ${student.name} (${student.className})` : 
+//         `Goodbye ${student.name} (${student.className})`,
+//       time: new Date().toLocaleTimeString(),
+//       isLate: attendanceData && attendanceData.status === 'Late'
+//     });
+
+//   } catch (error) {
+//     console.error('❌ RFID Scan error:', error);
+//     res.status(500).json({ error: error.message });
+//   }
+// });
+
+// ==================== HEALTH CHECK ====================
+
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    service: 'RFID Attendance API',
+    version: '1.0.0'
+  });
+});
+
+// Start server
+app.listen(port, () => {
+  console.log(`🚀 Server running on port ${port}`);
+  console.log(`📡 API available at: http://localhost:${port}`);
+  console.log(`🏥 Health check: http://localhost:${port}/health`);
+});
+// Store scanned cards in memory (or use Redis in production)
+
+let scannedCards = [];
+
+// 27. Get all scanned cards (for frontend polling)
+app.get('/api/cards/scanning', authenticateToken, async (req, res) => {
+  try {
+    // Get recent cards from all devices (last 30 seconds)
+    const thirtySecondsAgo = new Date(Date.now() - 30000);
+    
+    const devicesRef = db.collection('devices');
+    const snapshot = await devicesRef
+      .where('lastSeen', '>', thirtySecondsAgo)
+      .get();
+    
+    const cards = [];
+    const processedCardIds = new Set();
+    
+    snapshot.forEach(doc => {
+      const device = doc.data();
+      if (device.lastCard && device.lastSeen) {
+        const lastSeen = device.lastSeen.toDate ? device.lastSeen.toDate() : new Date(device.lastSeen);
+        
+        // Only include cards scanned in last 30 seconds
+        if (lastSeen > thirtySecondsAgo && !processedCardIds.has(device.lastCard)) {
+          processedCardIds.add(device.lastCard);
+          
+          cards.push({
+            id: device.lastCard,
+            deviceId: doc.id,
+            deviceName: device.name,
+            timestamp: lastSeen,
+            isRecent: true
+          });
+        }
+      }
+    });
+    
+    // Check if cards are already assigned to students
+    for (const card of cards) {
+      const studentsRef = db.collection('students');
+      const studentSnap = await studentsRef.where('cardId', '==', card.id).get();
+      card.isAssigned = !studentSnap.empty;
+      
+      if (!studentSnap.empty) {
+        const student = studentSnap.docs[0].data();
+        card.assignedTo = student.name;
+      }
+    }
+    
+    res.json({ 
+      cards: cards.sort((a, b) => b.timestamp - a.timestamp), // Newest first
+      total: cards.length
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 28. Simple enrollment endpoint
+app.post('/api/students/enroll', authenticateToken, async (req, res) => {
+  try {
+    const { name, age, className, rollNumber, cardId, isActive = true } = req.body;
+    
+    // Validate required fields
+    if (!name || !className || !cardId) {
+      return res.status(400).json({ error: 'Name, Class, and Card ID are required' });
+    }
+    
+    // Check if card already exists
+    const existingStudent = await db.collection('students')
+      .where('cardId', '==', cardId)
+      .get();
+    
+    if (!existingStudent.empty) {
+      return res.status(400).json({ 
+        error: 'This card is already assigned to another student',
+        existingStudent: existingStudent.docs[0].data().name
+      });
+    }
+    
+    // Create student data
+    const studentData = {
+      name,
+      age: parseInt(age) || 0,
+      className,
+      rollNumber: rollNumber || '',
+      cardId,
+      isActive: isActive !== false,
+      enrolledAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    // Add to database
+    const docRef = await db.collection('students').add(studentData);
+    
+    // Log enrollment activity
+    await db.collection('enrollment_logs').add({
+      studentId: docRef.id,
+      cardId,
+      name,
+      className,
+      enrolledAt: new Date(),
+      action: 'enrollment'
+    });
+    
+    // Clear this card from recent scans (optional)
+    const devicesRef = db.collection('devices');
+    const deviceSnap = await devicesRef.where('lastCard', '==', cardId).get();
+    
+    if (!deviceSnap.empty) {
+      const deviceDoc = deviceSnap.docs[0];
+      await deviceDoc.ref.update({
+        lastCard: null,
+        enrollmentStatus: 'completed'
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Student enrolled successfully',
+      studentId: docRef.id,
+      cardId: cardId,
+      student: studentData
+    });
+    
+  } catch (error) {
+    console.error('Enrollment error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 29. Clear scanned cards
+app.post('/api/cards/clear', authenticateToken, async (req, res) => {
+  try {
+    // Clear lastCard from all devices
+    const devicesRef = db.collection('devices');
+    const snapshot = await devicesRef.get();
+    
+    const batch = db.batch();
+    snapshot.forEach(doc => {
+      batch.update(doc.ref, { lastCard: null });
+    });
+    
+    await batch.commit();
+    
+    res.json({ 
+      success: true,
+      message: 'All scanned cards cleared',
+      cleared: snapshot.size
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 30. Update the RFID scan endpoint to be simpler
 app.post('/api/rfid/scan', async (req, res) => {
   try {
-    const { cardId, deviceId, mode = 'attendance' } = req.body;
+    const { cardId, deviceId } = req.body;
 
-    console.log('📱 RFID Scan received:', { cardId, deviceId, mode });
+    console.log('📱 RFID Scan received:', { cardId, deviceId });
 
     if (!cardId) {
       return res.status(400).json({ error: 'Card ID required' });
     }
 
-    // ============ UPDATE DEVICE STATUS ============
+    // Update device with scanned card
     if (deviceId) {
       const deviceRef = db.collection('devices').doc(deviceId);
-      const deviceData = {
+      await deviceRef.set({
         lastSeen: new Date(),
         status: 'online',
-        lastCard: cardId,
-        mode: mode
-      };
-      
-      const deviceDoc = await deviceRef.get();
-      if (!deviceDoc.exists) {
-        // Auto-register device if not exists
-        deviceData.id = deviceId;
-        deviceData.name = `Device ${deviceId}`;
-        deviceData.registeredAt = new Date();
-        await deviceRef.set(deviceData);
-      } else {
-        await deviceRef.set(deviceData, { merge: true });
-      }
+        lastCard: cardId
+      }, { merge: true });
     }
 
-    // ============ ENROLLMENT MODE ============
-    if (mode === 'enrollment') {
-      console.log('🎯 Enrollment mode - Card detected:', cardId);
-      
-      // Check if card already enrolled
-      const studentsRef = db.collection('students');
-      const studentSnap = await studentsRef.where('cardId', '==', cardId).get();
-      
-      if (!studentSnap.empty) {
-        return res.json({
-          status: 'already_enrolled',
-          cardId: cardId,
-          message: 'This card is already assigned to a student'
-        });
-      }
-      
-      return res.json({
-        status: 'enrollment',
-        cardId: cardId,
-        message: 'Card ready for enrollment',
-        time: new Date().toLocaleTimeString()
-      });
-    }
-
-    // ============ ATTENDANCE MODE ============
-    // Rest of your existing attendance logic...
+    // Check if card is enrolled (for attendance)
     const studentsRef = db.collection('students');
     const snapshot = await studentsRef.where('cardId', '==', cardId).where('isActive', '==', true).get();
 
     if (snapshot.empty) {
+      // Card not enrolled - could be for enrollment
       return res.json({ 
-        status: 'not_found',
+        status: 'not_enrolled',
         cardId: cardId,
-        message: 'Card not registered or student inactive' 
+        message: 'Card not enrolled yet',
+        canEnroll: true
       });
     }
 
+    // Card is enrolled - process attendance
     const studentDoc = snapshot.docs[0];
     const student = { id: studentDoc.id, ...studentDoc.data() };
 
@@ -1254,16 +1565,12 @@ app.post('/api/rfid/scan', async (req, res) => {
       .limit(1)
       .get();
 
-    let attendanceData;
-    let isCheckIn = false;
-
     if (todayQuery.empty) {
       // CHECK-IN
-      isCheckIn = true;
       const now = new Date();
       const isLate = now.getHours() > 8 || (now.getHours() === 8 && now.getMinutes() > 30);
       
-      attendanceData = {
+      const attendanceData = {
         studentId: student.id,
         cardId: student.cardId,
         name: student.name,
@@ -1273,8 +1580,7 @@ app.post('/api/rfid/scan', async (req, res) => {
         date: now,
         status: isLate ? 'Late' : 'Present',
         type: 'checkin',
-        deviceId: deviceId || 'unknown',
-        mode: mode
+        deviceId: deviceId || 'unknown'
       };
 
       await attendanceRef.add(attendanceData);
@@ -1289,6 +1595,15 @@ app.post('/api/rfid/scan', async (req, res) => {
         timestamp: Date.now(),
         status: isLate ? 'Late' : 'Present',
         deviceId: deviceId
+      });
+
+      return res.json({ 
+        status: 'checkin',
+        name: student.name,
+        className: student.className,
+        message: `Welcome ${student.name} (${student.className})`,
+        time: now.toLocaleTimeString(),
+        isLate: isLate
       });
 
     } else {
@@ -1313,6 +1628,14 @@ app.post('/api/rfid/scan', async (req, res) => {
           status: 'Checked Out',
           deviceId: deviceId
         });
+
+        return res.json({ 
+          status: 'checkout',
+          name: student.name,
+          className: student.className,
+          message: `Goodbye ${student.name} (${student.className})`,
+          time: new Date().toLocaleTimeString()
+        });
       } else {
         return res.json({ 
           status: 'already_checked_out',
@@ -1322,37 +1645,8 @@ app.post('/api/rfid/scan', async (req, res) => {
       }
     }
 
-    return res.json({ 
-      status: isCheckIn ? 'login' : 'logout',
-      name: student.name,
-      className: student.className,
-      message: isCheckIn ? 
-        `Welcome ${student.name} (${student.className})` : 
-        `Goodbye ${student.name} (${student.className})`,
-      time: new Date().toLocaleTimeString(),
-      isLate: attendanceData && attendanceData.status === 'Late'
-    });
-
   } catch (error) {
     console.error('❌ RFID Scan error:', error);
     res.status(500).json({ error: error.message });
   }
-});
-
-// ==================== HEALTH CHECK ====================
-
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    service: 'RFID Attendance API',
-    version: '1.0.0'
-  });
-});
-
-// Start server
-app.listen(port, () => {
-  console.log(`🚀 Server running on port ${port}`);
-  console.log(`📡 API available at: http://localhost:${port}`);
-  console.log(`🏥 Health check: http://localhost:${port}/health`);
 });
